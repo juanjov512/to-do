@@ -1,5 +1,10 @@
 import type { QueryResultRow } from "pg";
 
+interface IEtiqueta {
+  id: number;
+  nombre: string;
+}
+
 interface ITarea extends QueryResultRow {
   id: number;
   usuario_id: number;
@@ -11,6 +16,16 @@ interface ITarea extends QueryResultRow {
   completada: boolean;
   created_at: Date;
   updated_at: Date;
+  etiquetas: IEtiqueta[];
+}
+
+interface ITareaEtiquetas extends QueryResultRow {
+  tarea_id: number;
+  etiqueta_id: number;
+}
+
+interface IActualizarEtiquetasTareaDTO {
+  etiqueta_id: number;
 }
 
 interface ICrearTareaDTO {
@@ -31,8 +46,6 @@ interface IActualizarTareaDTO {
 }
 
 interface IFiltroTareas {
-  usuarioId: number;
-
   categoriaId?: number;
   completada?: boolean;
   prioridad?: number;
@@ -54,6 +67,8 @@ interface IFiltroTareas {
 
 export type {
   ITarea,
+  ITareaEtiquetas,
+  IActualizarEtiquetasTareaDTO,
   ICrearTareaDTO,
   IActualizarTareaDTO,
   IFiltroTareas,

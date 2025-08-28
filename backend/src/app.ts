@@ -1,5 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
+import { config } from "./config/env";
+import cors from "cors";
 
 import logger from "./middlewares/logger";
 import { errorHandler } from "./middlewares/errorHandler";
@@ -13,6 +15,12 @@ import etiquetasRoutes from "./modules/etiquetas/etiquetas.routes";
 dotenv.config();
 
 const app = express();
+
+// CORS
+app.use(cors({
+  origin: config.frontendUrl,
+  credentials: true,
+}));
 
 // Middlewares base
 app.use(express.json());

@@ -1,50 +1,71 @@
 import db from "../../config/db";
-import { ITarea, ICrearTareaDTO, IActualizarTareaDTO, IFiltroTareas } from "./tareas.types";
+import { ITarea, ICrearTareaDTO, IActualizarTareaDTO, IFiltroTareas, ITareaEtiquetas } from "./tareas.types";
 
 async function getAllByUser(userId: number, filters: IFiltroTareas): Promise<ITarea[]> {
-  const conditions: string[] = ["usuario_id = $1"];
+  const conditions: string[] = ["t.usuario_id = $1"];
   const params: any[] = [userId];
   let index = 2;
 
   if (filters.categoriaId) {
-    conditions.push(`categoria_id = $${index++}`);
+    conditions.push(`t.categoria_id = $${index++}`);
     params.push(filters.categoriaId);
   }
 
   if (typeof filters.completada === "boolean") {
-    conditions.push(`completada = $${index++}`);
+    conditions.push(`t.completada = $${index++}`);
     params.push(filters.completada);
   }
 
   if (filters.prioridad) {
-    conditions.push(`prioridad = $${index++}`);
+    conditions.push(`t.prioridad = $${index++}`);
     params.push(filters.prioridad);
   }
 
   if (filters.fechaVencimientoDesde) {
-    conditions.push(`fecha_vencimiento >= $${index++}`);
+    conditions.push(`t.fecha_vencimiento >= $${index++}`);
     params.push(filters.fechaVencimientoDesde);
   }
 
   if (filters.fechaVencimientoHasta) {
-    conditions.push(`fecha_vencimiento <= $${index++}`);
+    conditions.push(`t.fecha_vencimiento <= $${index++}`);
     params.push(filters.fechaVencimientoHasta);
   }
 
   if (filters.busqueda) {
-    conditions.push(`(titulo ILIKE $${index} OR descripcion ILIKE $${index})`);
+    conditions.push(`(t.titulo ILIKE $${index} OR t.descripcion ILIKE $${index})`);
     params.push(`%${filters.busqueda}%`);
     index++;
   }
 
   let query = `
-    SELECT *
-    FROM tareas
+    SELECT 
+      t.id,
+      t.usuario_id,
+      t.categoria_id,
+      t.titulo,
+      t.descripcion,
+      t.prioridad,
+      t.fecha_vencimiento,
+      t.completada,
+      t.created_at,
+      t.updated_at,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', e.id,
+            'nombre', e.nombre
+          )
+        ) FILTER (WHERE e.id IS NOT NULL), '[]'
+      ) AS etiquetas
+    FROM tareas t
+    LEFT JOIN tarea_etiquetas te ON t.id = te.tarea_id
+    LEFT JOIN etiquetas e ON te.etiqueta_id = e.id
     WHERE ${conditions.join(" AND ")}
+    GROUP BY t.id
   `;
 
   if (filters.ordenarPor) {
-    query += ` ORDER BY ${filters.ordenarPor} ${filters.orden || "asc"}`;
+    query += ` ORDER BY t.${filters.ordenarPor} ${filters.orden || "asc"}`;
   }
 
   if (filters.limite) {
@@ -98,14 +119,52 @@ async function remove(tareaId: number, userId: number): Promise<boolean> {
 
 async function toggleComplete(tareaId: number, userId: number): Promise<ITarea | null> {
   const { rows } = await db.query<ITarea>(
-    `UPDATE tareas
-     SET completada = NOT completada
-     WHERE id = $1 AND usuario_id = $2
-     RETURNING *`,
+    `
+      UPDATE tareas
+      SET completada = NOT completada
+      WHERE id = $1 AND usuario_id = $2
+      RETURNING *
+    `,
     [tareaId, userId]
   );
   return rows[0] || null;
 }
+
+async function addTagToTask(userId: number, tareaId: number, etiquetaId: number): Promise<ITareaEtiquetas | null> {
+  const { rows } = await db.query<ITareaEtiquetas>(
+    `
+      INSERT INTO tarea_etiquetas (tarea_id, etiqueta_id)
+      SELECT t.id, e.id
+      FROM tareas t
+      JOIN etiquetas e 
+        ON e.id = $2 
+       AND e.usuario_id = $3 
+       AND t.usuario_id = $3
+      WHERE t.id = $1
+      ON CONFLICT (tarea_id, etiqueta_id) DO NOTHING
+      RETURNING *
+    `,
+    [tareaId, etiquetaId, userId]
+  );
+  return rows[0] || null;
+}
+
+async function removeTagFromTask(userId: number, tareaId: number, etiquetaId: number): Promise<ITareaEtiquetas | null> {
+  const { rows } = await db.query<ITareaEtiquetas>(
+    `
+      DELETE FROM tarea_etiquetas te
+      USING tareas t, etiquetas e
+      WHERE te.tarea_id = $1
+        AND te.etiqueta_id = $2
+        AND t.usuario_id = $3
+        AND e.usuario_id = $3
+      RETURNING te.*
+    `,
+    [tareaId, etiquetaId, userId]
+  );
+  return rows[0] || null;
+}
+
 
 export {
   getAllByUser,
@@ -113,4 +172,6 @@ export {
   update,
   remove,
   toggleComplete,
+  addTagToTask,
+  removeTagFromTask,
 }
